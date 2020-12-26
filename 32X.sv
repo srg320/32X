@@ -68,6 +68,7 @@ module S32X (
 	bit   [3:0] SHDQM_N;
 	bit         SHRD_N;
 	bit   [3:1] SHMIRL_N;
+	bit         SHMFTOA;
 	
 	bit  [26:0] SHSA;
 	bit  [31:0] SHSDO;
@@ -81,6 +82,7 @@ module S32X (
 	bit   [3:0] SHSDQM_N;
 	bit         SHSRD_N;
 	bit   [3:1] SHSIRL_N;
+	bit         SHSFTOA;
 	
 	bit         SHRES_N;
 	bit         SHWAIT_N;
@@ -102,7 +104,7 @@ module S32X (
 		.RES_N(SHRES_N),
 		.NMI_N(1'b1),
 		
-		.IRL_N({SHMIRL_N,1'b1}),
+		.IRL_N({SHMIRL_N,SHMFTOA}),
 		
 		.A(SHA),
 		.DI(SHDI),
@@ -140,6 +142,8 @@ module S32X (
 		.SCKO(SCKM),
 		.SCKI(SCKS),
 		
+		.FTOA(SHMFTOA),
+		
 		.MD(6'b001000)
 	);
 	
@@ -153,7 +157,7 @@ module S32X (
 		.RES_N(SHRES_N),
 		.NMI_N(1'b1),
 		
-		.IRL_N({SHSIRL_N,1'b1}),
+		.IRL_N({SHSIRL_N,SHSFTOA}),
 		
 		.A(SHSA),
 		.DI(SHSDI),
@@ -190,6 +194,8 @@ module S32X (
 		.TXD(TXDS),
 		.SCKO(SCKS),
 		.SCKI(SCKM),
+		
+		.FTOA(SHSFTOA),
 		
 		.MD(6'b101000)
 	);

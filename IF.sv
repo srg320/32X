@@ -501,7 +501,7 @@ module S32X_IF (
 						6'h00: SH_REG_DO <= { {ADCR.FM,5'b00000,ADCR.ADEN,CART_N}, {IMMR[7:4],(!SH_SLV ? IMMR[3:0] : IMSR[3:0])} & IMR_MASK[7:0] };
 						6'h02: SH_REG_DO <= '0;	//Write only
 						6'h04: SH_REG_DO <= {8'h00,HCNTR};
-						6'h06: SH_REG_DO <= {FIFO_FULL,FIFO_EMPTY,11'h000,DCR.M68S,1'b0,DCR.RV};
+						6'h06: SH_REG_DO <= {FIFO_FULL,FIFO_EMPTY,11'h000,DCR.M68S,DCR.DMA,DCR.RV};
 						6'h08: SH_REG_DO <= {8'h00,DSAR[23:16] & DSAR_MASK[23:16]};
 						6'h0A: SH_REG_DO <= DSAR[15:0] & DSAR_MASK[15:0];
 						6'h0C: SH_REG_DO <= {8'h00,DDAR[23:16] & DDAR_MASK[23:16]};
@@ -537,11 +537,11 @@ module S32X_IF (
 			
 			VDP_HINT_OLD <= VDP_HINT;
 			if (VDP_HINT && !VDP_HINT_OLD) begin
-				LINE_CNT <= LINE_CNT + 3'd1;
+				LINE_CNT <= LINE_CNT + 8'd1;
 				if (LINE_CNT == HCNTR) begin
 					LINE_CNT <= '0;
-					if (IMMR.H) H_INTM <= 1;
-					if (IMSR.H) H_INTS <= 1;
+					if (IMMR.H && (IMMR.HEN || !VDP_VINT)) H_INTM <= 1;
+					if (IMSR.H && (IMMR.HEN || !VDP_VINT)) H_INTS <= 1;
 				end
 			end
 			

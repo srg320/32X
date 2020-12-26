@@ -164,6 +164,7 @@ module S32X_VDP (
 	always @(posedge CLK or negedge RST_N) begin
 		bit        HSYNC_N_OLD;
 		bit        VSYNC_N_OLD;
+		bit        VSYNC_OCCUR;
 		
 		if (!RST_N) begin
 			DOT_CLK <= 0;
@@ -177,7 +178,7 @@ module S32X_VDP (
 				DOT_CLK <= ~DOT_CLK;
 				HSYNC_N_OLD <= HSYNC_N;
 				if (!HSYNC_N && HSYNC_N_OLD && !DOT_CLK) begin
-					H_CNT <= 9'h1CD;
+					H_CNT <= 9'h1CD+1;
 				end else if (H_CNT == 9'h16C && DOT_CLK) begin
 					H_CNT <= 9'h1C9;
 				end else if (DOT_CLK) begin
@@ -185,9 +186,12 @@ module S32X_VDP (
 				end
 				
 				VSYNC_N_OLD <= VSYNC_N;
+				if (!VSYNC_N && VSYNC_N_OLD) VSYNC_OCCUR <= 1;
+				
 				if (H_CNT == 9'h149 && DOT_CLK) begin
-					if (!VSYNC_N && VSYNC_N_OLD) begin
-						V_CNT <= 9'd234;
+					if (VSYNC_OCCUR) begin
+						V_CNT <= 9'd235;
+						VSYNC_OCCUR <= 0;
 					end else if (V_CNT == 9'd260) begin
 						V_CNT <= 9'd0;
 					end else begin

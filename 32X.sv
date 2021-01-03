@@ -42,11 +42,22 @@ module S32X (
 	output            SDR_RD,
 	input             SDR_WAIT,
 	
+	output     [15:0] FB0_A,
+	input      [15:0] FB0_DI,
+	output     [15:0] FB0_DO,
+	output      [1:0] FB0_WE,
+	output     [15:0] FB1_A,
+	input      [15:0] FB1_DI,
+	output     [15:0] FB1_DO,
+	output      [1:0] FB1_WE,
+	
 	output      [4:0] R,
 	output      [4:0] G,
 	output      [4:0] B,
-	output            YSO_N
+	output            YSO_N,
 	
+	output     [15:0] PWM_L,
+	output     [15:0] PWM_R
 );
 	import S32X_PKG::*;
 	
@@ -104,7 +115,7 @@ module S32X (
 		.RES_N(SHRES_N),
 		.NMI_N(1'b1),
 		
-		.IRL_N({SHMIRL_N,SHMFTOA}),
+		.IRL_N({SHMIRL_N,1'b1/*SHMFTOA*/}),
 		
 		.A(SHA),
 		.DI(SHDI),
@@ -157,7 +168,7 @@ module S32X (
 		.RES_N(SHRES_N),
 		.NMI_N(1'b1),
 		
-		.IRL_N({SHSIRL_N,SHSFTOA}),
+		.IRL_N({SHSIRL_N,1'b1/*SHSFTOA*/}),
 		
 		.A(SHSA),
 		.DI(SHSDI),
@@ -278,7 +289,7 @@ module S32X (
 		.VDP_RD_N(VDP_RD_N),
 		.VDP_LWR_N(VDP_LWR_N),
 		.VDP_UWR_N(VDP_UWR_N),
-		.VDP_ACK_N(),
+		.VDP_ACK_N(VDP_ACK_N),
 		.VDP_DRAM_CS_N(VDP_DRAM_CS_N),
 		.VDP_REG_CS_N(VDP_REG_CS_N),
 		.VDP_PAL_CS_N(VDP_PAL_CS_N),
@@ -289,6 +300,9 @@ module S32X (
 		.VDP_VINT(VDP_VINT),
 		.VDP_HINT(VDP_HINT),
 //		.VDP_C23(),
+
+		.PWM_L(PWM_L),
+		.PWM_R(PWM_R),
 		
 		.ROM_WAIT(ROM_WAIT)
 	);
@@ -336,14 +350,6 @@ module S32X (
 	assign SDR_WE = ~SHDQM_N[1:0];
 	assign SDR_RD = ~SHRD_N;
 	
-	bit  [15:0] FB0_A;
-	bit  [15:0] FB0_DI;
-	bit  [15:0] FB0_DO;
-	bit   [1:0] FB0_WE;
-	bit  [15:0] FB1_A;
-	bit  [15:0] FB1_DI;
-	bit  [15:0] FB1_DO;
-	bit   [1:0] FB1_WE;
 	S32X_VDP S32X_VDP
 	(
 		.CLK(CLK),

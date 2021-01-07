@@ -72,7 +72,9 @@ module S32X_IF (
 	output     [15:0] PWM_L,
 	output     [15:0] PWM_R,
 	
-	input             ROM_WAIT
+	input             ROM_WAIT,
+	
+	output     [7:0] ROM_WAIT_CNT
 );
 	import S32X_PKG::*;
 
@@ -654,16 +656,18 @@ module S32X_IF (
 				SH_ROM_WAIT <= 1;
 			end
 			
+			ROM_WAIT_CNT <= ROM_WAIT_CNT + 1;
 			case (ROM_ST)
 				RS_IDLE: begin
 					if (SH_ROM_WAIT && !DCR.RV) begin
 						S32X_CE0 <= 1;
 						SH_ROM_GRANT <= 1;
 						ROM_ST <= RS_SH_WAIT;
-					end else if (((MD_32XROM_SEL /*| MD_ROM_SEL*/) && !CAS0_N) || (MD_BIOS_SEL && (!LWR_N || !UWR_N || !CAS0_N))) begin
+					end else if (((MD_32XROM_SEL /*| MD_ROM_SEL*/) && !CAS0_N) /*|| (MD_BIOS_SEL && (!LWR_N || !UWR_N || !CAS0_N))*/) begin
 						S32X_CE0 <= 1;
 						ROM_ST <= RS_MD_WAIT;
 					end
+					ROM_WAIT_CNT <= '0;
 				end
 				
 				RS_SH_WAIT: begin
@@ -696,7 +700,7 @@ module S32X_IF (
 				
 				RS_MD_READ: begin
 					if (!ROM_WAIT_SYNC) begin
-						MD_ROM_DO <= MD_BIOS_SEL ? MDROM_Q : CDI;
+						MD_ROM_DO <= /*MD_BIOS_SEL ? MDROM_Q :*/ CDI;
 						MD_ROM_DTACK_N <= 0;
 						S32X_CE0 <= 0;
 						ROM_ST <= RS_MD_END;
@@ -814,9 +818,9 @@ module S32X_IF (
 		
 		if (MD_SYSREG_SEL || MD_32XID_SEL)
 			VDO = MD_REG_DO;
-//		else if (MD_BIOS_SEL)
-//			VDO = MDROM_Q;
-		else if (MD_32XROM_SEL || MD_BIOS_SEL)
+		else if (MD_BIOS_SEL)
+			VDO = MDROM_Q;
+		else if (MD_32XROM_SEL /*|| MD_BIOS_SEL*/)
 			VDO = MD_ROM_DO;
 		else if (MD_VDP_SEL)
 			VDO = VDP_DI;
@@ -824,7 +828,7 @@ module S32X_IF (
 			VDO = CDI;
 	end
 	
-	assign DTACK_N = MD_REG_DTACK_N & MD_ROM_DTACK_N & VDP_DTACK_N;
+	assign DTACK_N = MD_REG_DTACK_N & MD_ROM_DTACK_N & VDP_DTACK_N & ~MD_BIOS_SEL;
 	
 	assign SHDO = SH_ROM_SEL ? SH_ROM_DO : 
 	              SH_VDP_SEL ? VDP_DI : 
@@ -857,8 +861,8 @@ module S32X_IF (
 	assign CASEL_N = ADCR.ADEN && !DCR.RV ? ASEL_N | S32X_CE0 : ASEL_N;
 	assign CLWR_N  = ADCR.ADEN && !DCR.RV ? LWR_N | S32X_CE0 : LWR_N;
 	assign CUWR_N  = ADCR.ADEN && !DCR.RV ? UWR_N | S32X_CE0 : UWR_N;
-	assign CCE0_N  = ADCR.ADEN && !DCR.RV ? ~S32X_CE0 : CE0_N;
-	assign CCAS0_N = ADCR.ADEN && !DCR.RV ? ~S32X_CE0 : CAS0_N;
+	assign CCE0_N  = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_CE0 : MD_BIOS_SEL | CE0_N;
+	assign CCAS0_N = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_CE0 : CAS0_N;
 	assign CCAS2_N = CAS2_N;
 	
 	assign SEL = SH_ROM_GRANT;

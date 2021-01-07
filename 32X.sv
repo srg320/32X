@@ -63,9 +63,21 @@ module S32X (
 	
 	bit CE_R, CE_F;
 	always @(posedge CLK) begin
-		CE_R <= ~CE_R;
+		bit [2:0] CLK_CNT;
+		CLK_CNT <= CLK_CNT == 3'd6 ? 3'd0 : CLK_CNT + 1;
+		
+		CE_F <= 0;
+		CE_R <= 0;
+		case (CLK_CNT)
+			3'd0: CE_F <= 1;
+			3'd1: CE_R <= 1;
+			3'd2: CE_F <= 1;
+			3'd3: CE_R <= 1;
+			3'd5: CE_F <= 1;
+			3'd6: CE_R <= 1; 
+			default:;
+		endcase
 	end
-	assign CE_F = ~CE_R;
 
 	bit  [26:0] SHA;
 	bit  [31:0] SHDO;

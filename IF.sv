@@ -131,8 +131,8 @@ module S32X_IF (
 	bit  [3:0] TIME_CNT;
 	bit [11:0] LPW_BUF[3];
 	bit [11:0] RPW_BUF[3];
-	bit  [1:0] LPW_BUF_POS;
-	bit  [1:0] RPW_BUF_POS;
+	bit  [1:0] LPW_BUF_RDPOS,LPW_BUF_WRPOS;
+	bit  [1:0] RPW_BUF_RDPOS,RPW_BUF_WRPOS;
 	bit        LPW_SET;
 	bit        RPW_SET;
 	bit        PWM_REQ;
@@ -181,6 +181,9 @@ module S32X_IF (
 		bit        VDP_VINT_OLD;
 		bit [15:0] CYC_CNT_NEXT;
 		bit  [3:0] TIME_CNT_NEXT;
+		bit        LPWFIFO_INC_AMOUNT,LPWFIFO_DEC_AMOUNT;
+		bit        RPWFIFO_INC_AMOUNT,RPWFIFO_DEC_AMOUNT;
+		bit  [1:0] LPWFIFO_AMOUNT,RPWFIFO_AMOUNT;
 		
 		if (!RST_N) begin
 			ADCR <= ADCR_INIT;
@@ -190,7 +193,6 @@ module S32X_IF (
 			DSAR <= DSAR_INIT;
 			DDAR <= DDAR_INIT;
 			DLR  <= DLR_INIT;
-//			FFDR <= FFDR_INIT;
 			STVR <= STVR_INIT;
 			CP0R <= CPxR_INIT;
 			CP1R <= CPxR_INIT;
@@ -236,8 +238,12 @@ module S32X_IF (
 			VDP_VINT_OLD <= 0;
 			PWM_INTM <= 0;
 			PWM_INTS <= 0;
-			LPW_BUF_POS <= '0;
-			RPW_BUF_POS <= '0;
+			LPW_BUF_RDPOS <= '0;
+			RPW_BUF_RDPOS <= '0;
+			LPW_BUF_WRPOS <= '0;
+			RPW_BUF_WRPOS <= '0;
+			LPWFIFO_AMOUNT <= '0;
+			RPWFIFO_AMOUNT <= '0;
 			LPW_SET <= 0;
 			RPW_SET <= 0;
 			CYC_CNT <= '0;
@@ -248,6 +254,10 @@ module S32X_IF (
 			DLR_NEXT = DLR - 16'd1;
 			FIFO_INC_AMOUNT = 0;
 			FIFO_DEC_AMOUNT = 0;
+			LPWFIFO_INC_AMOUNT = 0;
+			LPWFIFO_DEC_AMOUNT = 0;
+			RPWFIFO_INC_AMOUNT = 0;
+			RPWFIFO_DEC_AMOUNT = 0;
 			if (MD_SYSREG_SEL & (!LWR_N | !UWR_N | !CAS0_N) && MD_REG_DTACK_N) begin
 				if (!LWR_N | !UWR_N) begin
 					case ({VA[5:1],1'b0})
@@ -291,11 +301,9 @@ module S32X_IF (
 							DLR         <= VDI & DLR_MASK;
 						end
 						6'h12: begin
-//							FFDR        <= VDI & FFDR_MASK;
 							if (DCR.M68S) begin
 								DLR <= DLR_NEXT;
 								if (!DLR_NEXT) DCR.M68S <= 0;
-//								FIFO_WR <= 1;
 								FIFO_BUF[FIFO_WR_POS] <= VDI;
 								FIFO_WR_POS <= FIFO_WR_POS + 3'd1;
 								if (FIFO_WR_POS[1:0] == 2'd3) begin
@@ -351,20 +359,20 @@ module S32X_IF (
 						6'h34: begin
 							if (!LWR_N) LPWR[ 7:0] <= VDI[ 7:0] & PWR_MASK[ 7:0];
 							if (!UWR_N) LPWR[13:8] <= VDI[13:8] & PWR_MASK[13:8];
-							LPW_SET <= |PWMCR.LMD;
+							LPW_SET <= 1;
 						end
 						6'h36: begin
 							if (!LWR_N) RPWR[ 7:0] <= VDI[ 7:0] & PWR_MASK[ 7:0];
 							if (!UWR_N) RPWR[13:8] <= VDI[13:8] & PWR_MASK[13:8];
-							RPW_SET <= |PWMCR.RMD;
+							RPW_SET <= 1;
 						end
 						6'h38: begin
 							if (!LWR_N) LPWR[ 7:0] <= VDI[ 7:0] & PWR_MASK[ 7:0];
 							if (!UWR_N) LPWR[13:8] <= VDI[13:8] & PWR_MASK[13:8];
 							if (!LWR_N) RPWR[ 7:0] <= VDI[ 7:0] & PWR_MASK[ 7:0];
 							if (!UWR_N) RPWR[13:8] <= VDI[13:8] & PWR_MASK[13:8];
-							LPW_SET <= |PWMCR.LMD;
-							RPW_SET <= |PWMCR.RMD;
+							LPW_SET <= 1;
+							RPW_SET <= 1;
 						end
 						default:;
 					endcase
@@ -391,9 +399,9 @@ module S32X_IF (
 						6'h2E: MD_REG_DO <= CP7R;
 						6'h30: MD_REG_DO <= PWMCR;
 						6'h32: MD_REG_DO <= {4'h0,CYCR[11:0]};
-						6'h34: MD_REG_DO <= {LPW_BUF_POS==2'd2,LPW_BUF_POS==2'd0,14'h0000};
-						6'h36: MD_REG_DO <= {RPW_BUF_POS==2'd2,RPW_BUF_POS==2'd0,14'h0000};
-						6'h38: MD_REG_DO <= {LPW_BUF_POS==2'd2,LPW_BUF_POS==2'd0,14'h0000};
+						6'h34: MD_REG_DO <= {LPWR.FULL,LPWR.EMPTY,14'h0000};
+						6'h36: MD_REG_DO <= {RPWR.FULL,RPWR.EMPTY,14'h0000};
+						6'h38: MD_REG_DO <= {LPWR.FULL,LPWR.EMPTY,14'h0000};
 						default: MD_REG_DO <= '0;
 					endcase
 				end
@@ -547,6 +555,7 @@ module S32X_IF (
 				SH_BIOS_ACCESS <= 0;
 			end
 			
+			//HINT,VINT
 			VDP_HINT_OLD <= VDP_HINT;
 			if (VDP_HINT && !VDP_HINT_OLD) begin
 				LINE_CNT <= LINE_CNT + 8'd1;
@@ -563,6 +572,7 @@ module S32X_IF (
 				if (IMSR.V) V_INTS <= 1;
 			end
 			
+			//DREQ
 			if (FIFO_INC_AMOUNT && !FIFO_DEC_AMOUNT) begin
 				if (FIFO_AMOUNT == 3'd7) FIFO_FULL <= 1;
 				else FIFO_AMOUNT <= FIFO_AMOUNT + 3'd1;
@@ -580,6 +590,7 @@ module S32X_IF (
 				FIFO_REQ <= 0;
 			end
 			
+			//PWM
 			if (PWMCR.LMD || PWMCR.RMD) begin 
 				CYC_CNT_NEXT = CYC_CNT + 12'd1;
 				TIME_CNT_NEXT = TIME_CNT + 4'd1;
@@ -600,33 +611,48 @@ module S32X_IF (
 						PWM_INTS <= IMSR.PWM;
 						PWM_REQ <= PWMCR.RTP;
 					end
-					if (LPW_BUF_POS > 2'd0) LPW_BUF_POS <= LPW_BUF_POS - 2'd1;
-					else LPWR.EMPTY <= 1;
-					LPWR.FULL <= 0;
-					if (RPW_BUF_POS > 2'd0) RPW_BUF_POS <= RPW_BUF_POS - 2'd1;
-					else RPWR.EMPTY <= 1;
-					RPWR.FULL <= 0;
+					LPW_BUF_RDPOS <= LPW_BUF_RDPOS == 2'd2 ? 2'd0 : LPW_BUF_RDPOS + 2'd1;
+					RPW_BUF_RDPOS <= RPW_BUF_RDPOS == 2'd2 ? 2'd0 : RPW_BUF_RDPOS + 2'd1;
+					LPWFIFO_DEC_AMOUNT = 1;
+					RPWFIFO_DEC_AMOUNT = 1;
 				end else if (LPW_SET || RPW_SET) begin
 					if (LPW_SET) begin
 						LPW_SET <= 0;
-						LPW_BUF[LPW_BUF_POS] <= LPWR.PW;
-						if (LPW_BUF_POS < 2'd2) LPW_BUF_POS <= LPW_BUF_POS + 2'd1;
-						else LPWR.FULL <= 1;
-						LPWR.EMPTY <= 0;
+						LPW_BUF[LPW_BUF_WRPOS] <= LPWR.PW;
+						LPW_BUF_WRPOS <= LPW_BUF_WRPOS == 2'd2 ? 2'd0 : LPW_BUF_WRPOS + 2'd1;
+						LPWFIFO_INC_AMOUNT = 1;
 					end
 					if (RPW_SET) begin
 						RPW_SET <= 0;
-						RPW_BUF[RPW_BUF_POS] <= RPWR.PW;
-						if (RPW_BUF_POS < 2'd2) RPW_BUF_POS <= RPW_BUF_POS + 2'd1;
-						else RPWR.FULL <= 1;
-						RPWR.EMPTY <= 0;
+						RPW_BUF[RPW_BUF_WRPOS] <= RPWR.PW;
+						RPW_BUF_WRPOS <= RPW_BUF_WRPOS == 2'd2 ? 2'd0 : RPW_BUF_WRPOS + 2'd1;
+						RPWFIFO_INC_AMOUNT = 1;
 					end
+				end
+				
+				if (LPWFIFO_INC_AMOUNT && !LPWFIFO_DEC_AMOUNT) begin
+					if (LPWFIFO_AMOUNT == 2'd2) LPWR.FULL <= 1;
+					else LPWFIFO_AMOUNT <= LPWFIFO_AMOUNT + 2'd1;
+					LPWR.EMPTY <= 0;
+				end else if (!LPWFIFO_INC_AMOUNT && LPWFIFO_DEC_AMOUNT) begin
+					if (LPWFIFO_AMOUNT == 3'd0) LPWR.EMPTY <= 1;
+					else LPWFIFO_AMOUNT <= LPWFIFO_AMOUNT - 'd1;
+					LPWR.FULL <= 0;
+				end
+				if (RPWFIFO_INC_AMOUNT && !RPWFIFO_DEC_AMOUNT) begin
+					if (RPWFIFO_AMOUNT == 2'd2) RPWR.FULL <= 1;
+					else RPWFIFO_AMOUNT <= RPWFIFO_AMOUNT + 2'd1;
+					RPWR.EMPTY <= 0;
+				end else if (!RPWFIFO_INC_AMOUNT && RPWFIFO_DEC_AMOUNT) begin
+					if (RPWFIFO_AMOUNT == 3'd0) RPWR.EMPTY <= 1;
+					else RPWFIFO_AMOUNT <= RPWFIFO_AMOUNT - 2'd1;
+					RPWR.FULL <= 0;
 				end
 			end
 		end
 	end
-	assign PWM_L = {LPW_BUF[LPW_BUF_POS] - 12'h800,4'h0};
-	assign PWM_R = {RPW_BUF[RPW_BUF_POS] - 12'h800,4'h0};
+	assign PWM_L = {LPW_BUF[LPW_BUF_RDPOS] - 12'h800,4'h0};
+	assign PWM_R = {RPW_BUF[RPW_BUF_RDPOS] - 12'h800,4'h0};
 	
 	
 	wire MD_BIOS_SEL = VA[21:8] == 14'h0000 & ~CE0_N & ~AS_N & ADCR.ADEN;								//000000-0000FF
@@ -656,7 +682,7 @@ module S32X_IF (
 				SH_ROM_WAIT <= 1;
 			end
 			
-			ROM_WAIT_CNT <= ROM_WAIT_CNT + 1;
+			ROM_WAIT_CNT <= ROM_WAIT_CNT + 7'd1;
 			case (ROM_ST)
 				RS_IDLE: begin
 					if (SH_ROM_WAIT && !DCR.RV) begin

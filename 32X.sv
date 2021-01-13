@@ -16,11 +16,13 @@ module S32X (
 	input             ASEL_N,
 	input             VRES_N,
 	input             MRES_N,
+	input             CART_N,
+	
+	input             EDCLK,
 	input             VSYNC_N,
 	input             HSYNC_N,
-	input             EDCLK,
 	input             YS_N,
-	input             CART_N,
+	input             PAL,
 	
 	output     [23:1] CA,
 	input      [15:0] CDI,
@@ -64,7 +66,7 @@ module S32X (
 	bit CE_R, CE_F;
 	always @(posedge CLK) begin
 		bit [2:0] CLK_CNT;
-		CLK_CNT <= CLK_CNT == 3'd6 ? 3'd0 : CLK_CNT + 1;
+		CLK_CNT <= CLK_CNT == 3'd6 ? 3'd0 : CLK_CNT + 3'd1;
 		
 		CE_F <= 0;
 		CE_R <= 0;
@@ -329,8 +331,7 @@ module S32X (
 		
 		if (!RST_N) begin
 			SH_SDR_WAIT <= 0;
-			SH_SDR_ACCESS <= 0;
-		end
+			SH_SDR_ACCESS <= 0;		end
 		else begin
 			SDR_WAIT_SYNC <= SDR_WAIT;
 			if (~SHCS3_N && !SH_SDR_ACCESS) begin
@@ -370,12 +371,12 @@ module S32X (
 		.CE_F(CE_F),
 
 		.MRES_N(MRES_N),
+		
+		.EDCLK_CE(EDCLK),
 		.VSYNC_N(VSYNC_N),
 		.HSYNC_N(HSYNC_N),
-		.EDCLK_CE(EDCLK),
 		.YS_N(YS_N),
-	
-		.PAL(1'b0),
+		.PAL(PAL),
 	
 		.A(VDP_A),
 		.DI(VDP_DO),

@@ -5,11 +5,11 @@ module S32X_VDP (
 	input             CE_F,
 	
 	input             MRES_N,
+	
 	input             VSYNC_N,
 	input             HSYNC_N,
 	input             EDCLK_CE,
 	input             YS_N,
-	
 	input             PAL,
 	
 	input      [17:1] A,
@@ -213,7 +213,7 @@ module S32X_VDP (
 			HBLK <= 0;
 			VBLK <= 0;
 			HDISP <= '{0,0,0};
-			FS <= 0;
+//			FS <= 0;
 		end
 		else if (DOT_CE) begin
 			if (H_CNT == 9'h018-1) begin
@@ -229,7 +229,7 @@ module S32X_VDP (
 			if (H_CNT == 9'h1CE-1) begin
 				if ((V_CNT == 9'd224 && (!BMMR.M240 || !PAL)) || (V_CNT == 9'd240 && BMMR.M240 && PAL)) begin
 					VBLK <= 1;
-					FS <= FBCR.FS;
+//					FS <= FBCR.FS;
 				end else if (V_CNT == 9'd0) begin
 					VBLK <= 0;
 				end
@@ -243,6 +243,7 @@ module S32X_VDP (
 			MODE <= '0;
 			PRI <= 0;
 			SFT <= 0;
+			FS <= 0;
 			PEN <= 0;
 		end
 		else begin
@@ -252,6 +253,8 @@ module S32X_VDP (
 					PRI <= BMMR.PRI;
 					SFT <= PPCR.SFT;
 				end
+				
+				if (VBLK || MODE == 2'b0) FS <= FBCR.FS;
 				
 				if (H_CNT == 9'h158+3-1 || VBLK || !MODE[0]) begin
 					PEN <= 1;
@@ -275,6 +278,7 @@ module S32X_VDP (
 			if (DOT_CE) begin
 				if (H_CNT == 9'h018-1) begin
 					LINE_LEAD <= {FB_DISP_Q,SFT | &MODE};
+					PIX_DATA <= '0;
 //					PP_BYTE <= PPCR.SFT | &MODE;
 				end
 				else if (HDISP[0])  begin

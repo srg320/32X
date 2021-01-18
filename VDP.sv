@@ -30,11 +30,13 @@ module S32X_VDP (
 	input      [15:0] FB0_DI,
 	output     [15:0] FB0_DO,
 	output      [1:0] FB0_WE,
+	output            FB0_RD,
 	
 	output     [15:0] FB1_A,
 	input      [15:0] FB1_DI,
 	output     [15:0] FB1_DO,
 	output      [1:0] FB1_WE,
+	output            FB1_RD,
 	
 	output      [4:0] R,
 	output      [4:0] G,
@@ -62,21 +64,26 @@ module S32X_VDP (
 	bit  [8:0] V_CNT;
 	bit        VBLK;
 	bit        HBLK;
-	bit        HDISP[3];
+	bit        HDISP[2];
+	bit        RFRH;
 
 	bit [15:0] FB_DRAW_A;
 	bit [15:0] FB_DRAW_D;
 	bit  [1:0] FB_DRAW_WE;
+	bit        FB_DRAW_RD;
 	bit [15:0] FB_DRAW_Q;
 	
 	bit [15:0] FB_DISP_A;
+	bit        FB_DISP_RD;
 	bit [15:0] FB_DISP_Q;
 
 	bit        FILL_EXEC;
-
+	bit  [1:0] FILL_WAIT;
 	always @(posedge CLK or negedge RST_N) begin
 		bit  [7:0] FILL_CNT;
-		bit        RD_WAIT;
+		bit        FILL_PEND;
+		bit  [2:0] ACCESS_WAIT;
+		
 		
 		if (!RST_N) begin
 			BMMR <= BMMR_INIT;
@@ -87,9 +94,11 @@ module S32X_VDP (
 			FBCR <= FBCR_INIT;
 			
 			ACK_N <= 1;
+			FILL_PEND <= 0;
 			FILL_EXEC <= 0;
 			FILL_CNT <= '0;
-			RD_WAIT <= 0;
+			ACCESS_WAIT <= 3'd7;
+			FILL_WAIT <= '0;
 		end
 		else begin
 			if (!REG_CS_N && (!LWR_N || !UWR_N || !RD_N) && ACK_N) begin
@@ -113,7 +122,7 @@ module S32X_VDP (
 						4'h8: begin
 							if (!LWR_N) AFDR[ 7:0] <= DI[ 7:0] & AFDR_MASK[ 7:0];
 							if (!UWR_N) AFDR[15:8] <= DI[15:8] & AFDR_MASK[15:8];
-							FILL_EXEC <= 1;
+							FILL_PEND <= 1;
 							FILL_CNT <= AFLR;
 						end
 						4'hA: begin
@@ -134,34 +143,37 @@ module S32X_VDP (
 				end
 				ACK_N <= 0;
 			end else if (!PAL_CS_N && (!LWR_N || !UWR_N || !RD_N) && ACK_N && PEN) begin
-				RD_WAIT <= ~RD_WAIT;
-				if (RD_WAIT) begin
-					if (!RD_N) begin
-						DO <= PAL_IO_Q;
-					end
+				ACCESS_WAIT <= ACCESS_WAIT - 3'd1;
+				if (!ACCESS_WAIT) begin
+					DO <= PAL_IO_Q;
 					ACK_N <= 0;
 				end
 			end else if (!DRAM_CS_N && (!LWR_N || !UWR_N || !RD_N) && ACK_N && !FEN) begin
-				RD_WAIT <= ~RD_WAIT;
-				if (RD_WAIT) begin
-					if (!RD_N) begin
-						DO <= FB_DRAW_Q;
-					end
+				ACCESS_WAIT <= ACCESS_WAIT - 3'd1;
+				if (!ACCESS_WAIT) begin
+					DO <= FB_DRAW_Q;
 					ACK_N <= 0;
 				end
 			end else if (LWR_N && UWR_N && RD_N && !ACK_N) begin
 				ACK_N <= 1;
+				ACCESS_WAIT <= 3'd4;
 			end
 			
-			if (FILL_EXEC && DOT_CE) begin
-				AFAR[ 7:0] <= AFAR[ 7:0] + 8'd1;
-				FILL_CNT <= FILL_CNT - 8'd1;
-				if (!FILL_CNT) FILL_EXEC <= 0;
+			if (FILL_PEND && CE_R) begin
+				FILL_PEND <= 0;
+				FILL_EXEC <= 1;
+			end else if (FILL_EXEC && CE_R) begin
+				FILL_WAIT <= FILL_WAIT + 2'd1;
+				if (FILL_WAIT == 2'd2) begin
+					FILL_WAIT <= '0;
+					AFAR[ 7:0] <= AFAR[ 7:0] + 8'd1;
+					FILL_CNT <= FILL_CNT - 8'd1;
+					if (!FILL_CNT) FILL_EXEC <= 0;
+				end
 			end
 		end
 	end
 	
-	assign FEN = FILL_EXEC;
 	
 	bit        DOT_CLK;
 	always @(posedge CLK or negedge RST_N) begin
@@ -193,9 +205,9 @@ module S32X_VDP (
 				
 				if (H_CNT == 9'h149 && DOT_CLK) begin
 					if (VSYNC_OCCUR) begin
-						V_CNT <= 9'd235;
+						V_CNT <= !PAL ? 9'd236 : 9'd260;
 						VSYNC_OCCUR <= 0;
-					end else if (V_CNT == 9'd260) begin
+					end else if ((V_CNT == 9'd261 && !PAL) || (V_CNT == 9'd312 && PAL)) begin
 						V_CNT <= 9'd0;
 					end else begin
 						V_CNT <= V_CNT + 9'd1;
@@ -206,14 +218,13 @@ module S32X_VDP (
 	end
 	
 	assign DOT_CE = DOT_CLK & EDCLK_CE;
-	//assign PEN = HBLK || VBLK || !MODE[0];
+
 	
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			HBLK <= 0;
 			VBLK <= 0;
-			HDISP <= '{0,0,0};
-//			FS <= 0;
+			HDISP <= '{0,0};
 		end
 		else if (DOT_CE) begin
 			if (H_CNT == 9'h018-1) begin
@@ -224,15 +235,31 @@ module S32X_VDP (
 				HDISP[0] <= 0;
 			end
 			HDISP[1] <= HDISP[0];
-			HDISP[2] <= HDISP[1];
 			
 			if (H_CNT == 9'h1CE-1) begin
 				if ((V_CNT == 9'd224 && (!BMMR.M240 || !PAL)) || (V_CNT == 9'd240 && BMMR.M240 && PAL)) begin
 					VBLK <= 1;
-//					FS <= FBCR.FS;
 				end else if (V_CNT == 9'd0) begin
 					VBLK <= 0;
 				end
+			end
+		end
+	end
+	
+	always @(posedge CLK or negedge RST_N) begin
+		bit  [5:0] RFRH_CNT;
+		
+		if (!RST_N) begin
+			RFRH <= 0;
+			RFRH_CNT <= '0;
+		end
+		else begin
+			if (H_CNT == 9'h158-1 && DOT_CE) begin
+				RFRH <= 1;
+				RFRH_CNT <= 6'd39;
+			end else if (RFRH && CE_R) begin
+				RFRH_CNT <= RFRH_CNT - 6'd1;
+				if (!RFRH_CNT) RFRH <= 0;
 			end
 		end
 	end
@@ -265,30 +292,32 @@ module S32X_VDP (
 		end
 	end
 	
+	assign FEN = FILL_EXEC | RFRH;
+	
 	
 	bit [16:0] LINE_LEAD;
 	bit [15:0] PIX_DATA;
-//	bit        PP_BYTE;
+	bit        PIX_BYTE;
 	always @(posedge CLK or negedge RST_N) begin		
 		if (!RST_N) begin
 			LINE_LEAD <= '0;
 			PIX_DATA <= '0;
+			PIX_BYTE <= 0;
 		end
 		else begin
 			if (DOT_CE) begin
 				if (H_CNT == 9'h018-1) begin
-					LINE_LEAD <= {FB_DISP_Q,SFT | &MODE};
+					LINE_LEAD <= {FB_DISP_Q, SFT | &MODE};
 					PIX_DATA <= '0;
-//					PP_BYTE <= PPCR.SFT | &MODE;
 				end
 				else if (HDISP[0])  begin
 					case (MODE)
 						2'b00:;
 						2'b01: begin
 							LINE_LEAD <= LINE_LEAD + 17'd1;
-							if (LINE_LEAD[0]) begin
+//							if (LINE_LEAD[0]) begin
 								PIX_DATA <= FB_DISP_Q;
-							end
+//							end
 						end
 						2'b10:  begin
 							PIX_DATA <= FB_DISP_Q;
@@ -302,6 +331,7 @@ module S32X_VDP (
 							end
 						end
 					endcase
+					PIX_BYTE <= LINE_LEAD[0];
 				end
 			end
 		end
@@ -314,7 +344,7 @@ module S32X_VDP (
 			FB_DISP_A = LINE_LEAD[16:1];
 	end
 		
-	wire  [7:0] PAL_DISP_A = LINE_LEAD[0] ? PIX_DATA[7:0] : PIX_DATA[15:8];
+	wire  [7:0] PAL_DISP_A = PIX_BYTE ? PIX_DATA[7:0] : PIX_DATA[15:8];
 	bit  [15:0] PAL_DISP_Q;
 	
 	wire  [7:0] PAL_IO_A = A[8:1];
@@ -357,22 +387,29 @@ module S32X_VDP (
 	assign R = PIX_COLOR[4:0];
 	assign G = PIX_COLOR[9:5];
 	assign B = PIX_COLOR[14:10];
-	assign YSO_N = ~(((~PRI && (PIX_COLOR[15] || ~YS_N)) | (PRI && ~PIX_COLOR[15])) && |MODE);
+//	assign YSO_N = ~(((~PRI && (PIX_COLOR[15] || ~YS_N)) | (PRI && ~PIX_COLOR[15])) && |MODE);
+	assign YSO_N = ~(PRI ^ PIX_COLOR[15]) & YS_N;
+	
+	always @(posedge CLK) FB_DISP_RD <= DOT_CE;
 	
 	assign FB_DRAW_A = FILL_EXEC ? AFAR : A[16:1];
 	assign FB_DRAW_D = FILL_EXEC ? AFDR : DI;
-	assign FB_DRAW_WE = FILL_EXEC ? {2{DOT_CE}} : {~DRAM_CS_N & ~UWR_N & ((|DI[15:8] & A[17]) | ((|DI[15:8] | ~LWR_N) & ~A[17])), 
-	                                               ~DRAM_CS_N & ~LWR_N & ((|DI[ 7:0] & A[17]) | ((|DI[ 7:0] | ~UWR_N) & ~A[17]))};
+	assign FB_DRAW_WE = FILL_EXEC ? {2{FILL_EXEC & ~|FILL_WAIT}} : {~DRAM_CS_N & ~UWR_N & ((|DI[15:8] & A[17]) | ((|DI[15:8] | ~LWR_N) & ~A[17])), 
+	                                                                ~DRAM_CS_N & ~LWR_N & ((|DI[ 7:0] & A[17]) | ((|DI[ 7:0] | ~UWR_N) & ~A[17]))};
+	assign FB_DRAW_RD = FILL_EXEC ? 1'b0 : ~DRAM_CS_N & ~RD_N;
+	
 	assign FB_DRAW_Q = FS ? FB0_DI : FB1_DI;
 	assign FB_DISP_Q = FS ? FB1_DI : FB0_DI;
 	
 	assign FB0_A  = FS ? FB_DRAW_A : FB_DISP_A;
 	assign FB0_DO = FB_DRAW_D;
 	assign FB0_WE = FS ? FB_DRAW_WE : 2'b00;
+	assign FB0_RD = FS ? FB_DRAW_RD : FB_DISP_RD;
 	
 	assign FB1_A  = FS ? FB_DISP_A : FB_DRAW_A;
 	assign FB1_DO = FB_DRAW_D;
-	assign FB1_WE = FS ? 2'b00 : FB_DRAW_WE;
+	assign FB1_WE = FS ? 2'b00      : FB_DRAW_WE;
+	assign FB1_RD = FS ? FB_DISP_RD : FB_DRAW_RD;
 	
 	assign HINT = HBLK;
 	assign VINT = VBLK;

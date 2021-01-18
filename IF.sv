@@ -147,23 +147,28 @@ module S32X_IF (
 	bit [15:0] MD_REG_DO;
 	bit        MD_REG_DTACK_N;
 	bit        MD_ROM_GRANT;
+	bit        MD_DMA_EXEC;
 	bit [15:0] SH_REG_DO;
 	bit        SH_ROM_WAIT;
 	bit        SH_ROM_GRANT;
 	
-	typedef enum bit [6:0] {
-		RS_IDLE    = 7'b0000001,  
-		RS_MD_WAIT = 7'b0000010, 
-		RS_MD_READ = 7'b0000100, 
-		RS_SH_WAIT = 7'b0001000, 
-		RS_SH_READ = 7'b0010000,
-		RS_MD_END  = 7'b0100000,
-		RS_SH_END  = 7'b1000000
+	typedef enum bit [8:0] {
+		RS_IDLE    = 9'b000000001,  
+		RS_MD_RW   = 9'b000000010, 
+		RS_MD_WAIT = 9'b000000100, 
+		RS_MD_READ = 9'b000001000, 
+		RS_SH_RW   = 9'b000010000, 
+		RS_SH_WAIT = 9'b000100000, 
+		RS_SH_READ = 9'b001000000,
+		RS_MD_END  = 9'b010000000,
+		RS_SH_END  = 9'b100000000
 	} ROMState_t;
 	ROMState_t ROM_ST;
 	
 	wire MD_SYSREG_SEL = VA[23:7] == 24'hA15100>>7 & ~AS_N;		//A15100-A1517F
 	wire MD_32XID_SEL  = VA[23:2] == 24'hA130EC>>2 & ~AS_N;		//A130FC-A130FF
+	wire MD_DMA_MATCH  = VA == DSAR[23:1] & ~AS_N & ~CAS0_N;		//
+	wire MD_DMA_READ   = MD_DMA_EXEC & ~AS_N & ~CAS0_N;
 	
 	wire SH_SLV = ~SHCS0S_N;
 	wire SH_BIOS_SEL = (~SHCS0M_N | ~SHCS0S_N) & SHA[17:14] == 4'b0000;	//00000000-00003FFF,20000000-20003FFF
@@ -172,6 +177,7 @@ module S32X_IF (
 	always @(posedge CLK or negedge RST_N) begin
 		bit        SH_SYSREG_ACCESS;
 		bit        SH_BIOS_ACCESS;
+		bit        MD_DMA_READ_OLD;
 		bit [15:0] DLR_NEXT;
 		bit        FIFO_INC_AMOUNT;
 		bit        FIFO_DEC_AMOUNT;
@@ -184,6 +190,7 @@ module S32X_IF (
 		bit        LPWFIFO_INC_AMOUNT,LPWFIFO_DEC_AMOUNT;
 		bit        RPWFIFO_INC_AMOUNT,RPWFIFO_DEC_AMOUNT;
 		bit  [1:0] LPWFIFO_AMOUNT,RPWFIFO_AMOUNT;
+		bit        PWM_REQ_PEND;
 		
 		if (!RST_N) begin
 			ADCR <= ADCR_INIT;
@@ -214,6 +221,7 @@ module S32X_IF (
 			
 			MD_REG_DO <= '0;
 			MD_REG_DTACK_N <= 1;
+			MD_DMA_EXEC <= 0;
 			SH_SYSREG_ACCESS <= 0;
 			SH_BIOS_ACCESS <= 0;
 			SH_REG_DO <= '0;
@@ -248,6 +256,7 @@ module S32X_IF (
 			RPW_SET <= 0;
 			CYC_CNT <= '0;
 			TIME_CNT <= '0;
+			PWM_REQ_PEND <= 0;
 			PWM_REQ <= 0;
 		end
 		else begin
@@ -415,6 +424,27 @@ module S32X_IF (
 				MD_REG_DTACK_N <= 1;
 			end
 			
+			if (MD_DMA_MATCH && DCR.DMA && DCR.M68S && !MD_DMA_EXEC) begin
+				MD_DMA_EXEC <= 1;
+			end else if (!DCR.DMA || !DCR.M68S) begin
+				MD_DMA_EXEC <= 0;
+			end
+			
+			MD_DMA_READ_OLD <= MD_DMA_READ;
+			if (MD_DMA_READ && !MD_DMA_READ_OLD && MD_DMA_EXEC) begin
+				if (DCR.M68S) begin
+					DLR <= DLR_NEXT;
+					if (!DLR_NEXT) DCR.M68S <= 0;
+					FIFO_BUF[FIFO_WR_POS] <= VDI;
+					FIFO_WR_POS <= FIFO_WR_POS + 3'd1;
+					if (FIFO_WR_POS[1:0] == 2'd3) begin
+						FIFO_REQ_AVAIL <= 1;
+						FIFO_REQ_PEND <= 1;
+					end
+					FIFO_INC_AMOUNT = 1;
+				end
+			end
+			
 			if (!SHBS_N && CE_F) begin
 				SH_SYSREG_ACCESS <= SH_SYSREG_SEL;
 				SH_BIOS_ACCESS <= SH_BIOS_SEL;
@@ -525,7 +555,6 @@ module S32X_IF (
 						6'h10: SH_REG_DO <= DLR & DLR_MASK[15:0];
 						6'h12: begin
 							SH_REG_DO <= FIFO_BUF[FIFO_RD_POS]; 
-//							FIFO_RD <= 1;
 							FIFO_RD_POS <= FIFO_RD_POS + 3'd1;
 							if (FIFO_RD_POS[1:0] == 2'd3) begin
 								FIFO_REQ_AVAIL <= 0;
@@ -603,13 +632,14 @@ module S32X_IF (
 				CYC_CNT <= CYC_CNT_NEXT;
 				if (CYC_CNT_NEXT == CYCR && (PWMCR.LMD || PWMCR.RMD)) begin
 					CYC_CNT <= 12'd0;
-					PWM_REQ <= 0;
+//					PWM_REQ <= 0;
 					TIME_CNT <= TIME_CNT_NEXT;
 					if (TIME_CNT_NEXT == PWMCR.TM) begin
 						TIME_CNT <= 4'd0;
 						PWM_INTM <= IMMR.PWM;
 						PWM_INTS <= IMSR.PWM;
-						PWM_REQ <= PWMCR.RTP;
+						//PWM_REQ <= PWMCR.RTP;
+						PWM_REQ_PEND <= 1;
 					end
 					LPW_BUF_RDPOS <= LPW_BUF_RDPOS == 2'd2 ? 2'd0 : LPW_BUF_RDPOS + 2'd1;
 					RPW_BUF_RDPOS <= RPW_BUF_RDPOS == 2'd2 ? 2'd0 : RPW_BUF_RDPOS + 2'd1;
@@ -636,7 +666,7 @@ module S32X_IF (
 					LPWR.EMPTY <= 0;
 				end else if (!LPWFIFO_INC_AMOUNT && LPWFIFO_DEC_AMOUNT) begin
 					if (LPWFIFO_AMOUNT == 3'd0) LPWR.EMPTY <= 1;
-					else LPWFIFO_AMOUNT <= LPWFIFO_AMOUNT - 'd1;
+					else LPWFIFO_AMOUNT <= LPWFIFO_AMOUNT - 2'd1;
 					LPWR.FULL <= 0;
 				end
 				if (RPWFIFO_INC_AMOUNT && !RPWFIFO_DEC_AMOUNT) begin
@@ -647,6 +677,13 @@ module S32X_IF (
 					if (RPWFIFO_AMOUNT == 3'd0) RPWR.EMPTY <= 1;
 					else RPWFIFO_AMOUNT <= RPWFIFO_AMOUNT - 2'd1;
 					RPWR.FULL <= 0;
+				end
+				
+				if (PWM_REQ_PEND) begin
+					PWM_REQ <= PWMCR.RTP;
+					PWM_REQ_PEND <= 0;
+				end else if (PWM_REQ) begin
+					PWM_REQ <= 0;
 				end
 			end
 		end
@@ -664,17 +701,23 @@ module S32X_IF (
 	bit        MD_ROM_DTACK_N;
 	bit [15:0] SH_ROM_DO;
 	bit        S32X_CE0;
+	bit        S32X_LWR;
+	bit        S32X_UWR;
+	bit        S32X_CAS0;
 	always @(posedge CLK or negedge RST_N) begin
 		bit        ROM_WAIT_SYNC;
 		bit        MD_ROM_READ;
 		bit        SH_ROM_READ;
 		
 		if (!RST_N) begin
+			S32X_CE0 <= 0;
+			S32X_LWR <= 0;
+			S32X_UWR <= 0;
+			S32X_CAS0 <= 0;
 			ROM_ST <= RS_IDLE;
 			MD_ROM_DTACK_N <= 1;
 			SH_ROM_WAIT <= 0;
 			SH_ROM_GRANT <= 0;
-			S32X_CE0 <= 0;
 		end
 		else begin
 			ROM_WAIT_SYNC <= ROM_WAIT;
@@ -688,53 +731,75 @@ module S32X_IF (
 					if (SH_ROM_WAIT && !DCR.RV) begin
 						S32X_CE0 <= 1;
 						SH_ROM_GRANT <= 1;
-						ROM_ST <= RS_SH_WAIT;
-					end else if (((MD_32XROM_SEL /*| MD_ROM_SEL*/) && !CAS0_N) /*|| (MD_BIOS_SEL && (!LWR_N || !UWR_N || !CAS0_N))*/) begin
+						ROM_ST <= RS_SH_RW;
+					end else if (((MD_32XROM_SEL /*| MD_ROM_SEL*/) && (!LWR_N || !UWR_N || !CAS0_N)) /*|| (MD_BIOS_SEL && (!LWR_N || !UWR_N || !CAS0_N))*/) begin
 						S32X_CE0 <= 1;
-						ROM_ST <= RS_MD_WAIT;
+						ROM_ST <= RS_MD_RW;
 					end
 					ROM_WAIT_CNT <= '0;
 				end
 				
+				RS_SH_RW: begin
+					S32X_LWR <= ~SHDQMLL_N;
+					S32X_UWR <= ~SHDQMLU_N;
+					S32X_CAS0 <= ~SHRD_N;
+					ROM_ST <= RS_SH_WAIT;
+				end
+				
 				RS_SH_WAIT: begin
-					if (ROM_WAIT_SYNC) begin
+					if (ROM_WAIT) begin
 						ROM_ST <= RS_SH_READ;
 					end
 				end
 				
 				RS_SH_READ: begin
-					if (!ROM_WAIT_SYNC) begin
+					if (!ROM_WAIT) begin
 						SH_ROM_DO <= CDI;
 						SH_ROM_WAIT <= 0;
-						S32X_CE0 <= 0;
+//						S32X_CE0 <= 0;
+						S32X_LWR <= 0;
+						S32X_UWR <= 0;
+						S32X_CAS0 <= 0;
 						ROM_ST <= RS_SH_END;
 					end
 				end
 				
 				RS_SH_END: begin
 					if (SHRD_N && SHDQMLL_N && SHDQMLU_N) begin
+						S32X_CE0 <= 0;
 						SH_ROM_GRANT <= 0;
 						ROM_ST <= RS_IDLE;
 					end
 				end
 				
+				RS_MD_RW: begin
+					S32X_LWR <= ~LWR_N;
+					S32X_UWR <= ~UWR_N;
+					S32X_CAS0 <= ~CAS0_N;
+					ROM_ST <= RS_MD_WAIT;
+				end
+				
 				RS_MD_WAIT: begin
-					if (ROM_WAIT_SYNC) begin
+					if (ROM_WAIT) begin
 						ROM_ST <= RS_MD_READ;
 					end
 				end
 				
 				RS_MD_READ: begin
-					if (!ROM_WAIT_SYNC) begin
+					if (!ROM_WAIT) begin
 						MD_ROM_DO <= /*MD_BIOS_SEL ? MDROM_Q :*/ CDI;
 						MD_ROM_DTACK_N <= 0;
-						S32X_CE0 <= 0;
+						//S32X_CE0 <= 0;
+						S32X_LWR <= 0;
+						S32X_UWR <= 0;
+						S32X_CAS0 <= 0;
 						ROM_ST <= RS_MD_END;
 					end
 				end
 				
 				RS_MD_END: begin
 					if (AS_N && !MD_ROM_DTACK_N) begin
+						S32X_CE0 <= 0;
 						MD_ROM_DTACK_N <= 1;
 						ROM_ST <= RS_IDLE;
 					end
@@ -784,8 +849,8 @@ module S32X_IF (
 					VDP_LWR_N <= LWR_N;
 					VDP_UWR_N <= UWR_N;
 					MD_VDP_ACCESS <= 1;
-				end else begin
-					VDP_DTACK_N <= 0;
+//				end else begin
+//					VDP_DTACK_N <= 0;
 				end
 			end else if (MD_VDP_SEL && MD_VDP_ACCESS) begin
 				if (!VDP_ACK_N) begin
@@ -802,11 +867,11 @@ module S32X_IF (
 				VDP_DTACK_N <= 1;
 			end
 			
-			if (SH_VDP_SEL && ADCR.FM && !SHBS_N && CE_F) begin
+			if (SH_VDP_SEL && !SHBS_N && CE_F) begin
 				SH_VDP_WAIT <= 1;
 			end
 			
-			if (SH_VDP_WAIT && !SH_VDP_ACCESS) begin
+			if (SH_VDP_WAIT && ADCR.FM && !SH_VDP_ACCESS) begin
 				VDP_A <= SHA[17:1];
 				VDP_DO <= SHDI;
 				VDP_REG_CS_N <= ~SH_VDPREG_SEL;
@@ -816,17 +881,15 @@ module S32X_IF (
 				VDP_LWR_N <= SHDQMLL_N;
 				VDP_UWR_N <= SHDQMLU_N;
 				SH_VDP_ACCESS <= 1;
-			end else if (SH_VDP_SEL && SH_VDP_ACCESS) begin
-				if (!VDP_ACK_N) begin
-					VDP_RD_N <= 1;
-					VDP_LWR_N <= 1;
-					VDP_UWR_N <= 1;
-					VDP_REG_CS_N <= 1;
-					VDP_PAL_CS_N <= 1;
-					VDP_DRAM_CS_N <= 1;
-					SH_VDP_ACCESS <= 0;
-					SH_VDP_WAIT <= 0;
-				end
+			end else if (SH_VDP_SEL && SH_VDP_ACCESS && !VDP_ACK_N) begin
+				VDP_RD_N <= 1;
+				VDP_LWR_N <= 1;
+				VDP_UWR_N <= 1;
+				VDP_REG_CS_N <= 1;
+				VDP_PAL_CS_N <= 1;
+				VDP_DRAM_CS_N <= 1;
+				SH_VDP_ACCESS <= 0;
+				SH_VDP_WAIT <= 0;
 			end
 		end
 	end
@@ -884,11 +947,11 @@ module S32X_IF (
 	end
 	
 	assign CDO = VDI;
-	assign CASEL_N = ADCR.ADEN && !DCR.RV ? ASEL_N | S32X_CE0 : ASEL_N;
-	assign CLWR_N  = ADCR.ADEN && !DCR.RV ? LWR_N | S32X_CE0 : LWR_N;
-	assign CUWR_N  = ADCR.ADEN && !DCR.RV ? UWR_N | S32X_CE0 : UWR_N;
+	assign CASEL_N = ADCR.ADEN && !DCR.RV             ? ASEL_N | S32X_CE0 : ASEL_N;
+	assign CLWR_N  = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_LWR : LWR_N;
+	assign CUWR_N  = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_UWR : UWR_N;
 	assign CCE0_N  = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_CE0 : MD_BIOS_SEL | CE0_N;
-	assign CCAS0_N = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_CE0 : CAS0_N;
+	assign CCAS0_N = ADCR.ADEN && !DCR.RV && S32X_CE0 ? ~S32X_CAS0 : CAS0_N;
 	assign CCAS2_N = CAS2_N;
 	
 	assign SEL = SH_ROM_GRANT;

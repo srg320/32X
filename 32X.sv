@@ -48,10 +48,12 @@ module S32X (
 	input      [15:0] FB0_DI,
 	output     [15:0] FB0_DO,
 	output      [1:0] FB0_WE,
+	output            FB0_RD,
 	output     [15:0] FB1_A,
 	input      [15:0] FB1_DI,
 	output     [15:0] FB1_DO,
 	output      [1:0] FB1_WE,
+	output            FB1_RD,
 	
 	output      [4:0] R,
 	output      [4:0] G,
@@ -59,7 +61,9 @@ module S32X (
 	output            YSO_N,
 	
 	output     [15:0] PWM_L,
-	output     [15:0] PWM_R
+	output     [15:0] PWM_R,
+	
+	output     [23:0] DBG_CA
 );
 	import S32X_PKG::*;
 	
@@ -68,17 +72,19 @@ module S32X (
 		bit [2:0] CLK_CNT;
 		CLK_CNT <= CLK_CNT == 3'd6 ? 3'd0 : CLK_CNT + 3'd1;
 		
-		CE_F <= 0;
-		CE_R <= 0;
-		case (CLK_CNT)
-			3'd0: CE_F <= 1;
-			3'd1: CE_R <= 1;
-			3'd2: CE_F <= 1;
-			3'd3: CE_R <= 1;
-			3'd5: CE_F <= 1;
-			3'd6: CE_R <= 1; 
-			default:;
-		endcase
+//		CE_F <= 0;
+//		CE_R <= 0;
+//		case (CLK_CNT)
+//			3'd0: CE_F <= 1;
+//			3'd1: CE_R <= 1;
+//			3'd2: CE_F <= 1;
+//			3'd3: CE_R <= 1;
+//			3'd5: CE_F <= 1;
+//			3'd6: CE_R <= 1; 
+//			default:;
+//		endcase
+		CE_F <= ~CE_F;
+		CE_R <= CE_F;
 	end
 
 	bit  [26:0] SHA;
@@ -334,34 +340,29 @@ module S32X (
 			SH_SDR_ACCESS <= 0;		end
 		else begin
 			SDR_WAIT_SYNC <= SDR_WAIT;
-			if (~SHCS3_N && !SH_SDR_ACCESS) begin
-				if (CE_F) begin
-					if (!SHBS_N) begin
-						SH_SDR_WAIT <= 1;
-					end else if (((SHRD_WR_N && !SHRD_N) || (!SHRD_WR_N && !(&SHDQM_N))) && SDR_WAIT_SYNC) begin
-						SH_SDR_WAIT <= 1;
-						SH_SDR_ACCESS <= 1;
-					end
+			if (~SHCS3_N && !SH_SDR_ACCESS && CE_F) begin
+				if (!SHBS_N) begin
+					SH_SDR_WAIT <= 1;
 				end
-			end else if (~SHCS3_N && SH_SDR_ACCESS) begin
-				if (!SDR_WAIT_SYNC) begin
-					SH_SDR_DO <= SDR_DI;
-					SH_SDR_ACCESS <= 0;
-					SH_SDR_WAIT <= 0;
+				if (((SHRD_WR_N && !SHRD_N) || (!SHRD_WR_N && !(&SHDQM_N))) && SDR_WAIT) begin
+					SH_SDR_ACCESS <= 1;
 				end
+			end else if (SH_SDR_ACCESS && !SDR_WAIT) begin
+				SH_SDR_DO <= SDR_DI;
+				SH_SDR_ACCESS <= 0;
+				SH_SDR_WAIT <= 0;
 			end
 		end
 	end
-	
-	assign SHDI = !SHCS3_N ? {16'h0000,SH_SDR_DO} : {16'h0000,IF_DO};
-	assign SHWAIT_N = IF_WAIT_N & ~SH_SDR_WAIT;
-	
-	
 	assign SDR_A = SHA[17:1];
 	assign SDR_DO = SHDO[15:0];
 	assign SDR_CS = ~SHCS3_N;
 	assign SDR_WE = ~SHDQM_N[1:0];
 	assign SDR_RD = ~SHRD_N;
+	
+	assign SHDI = !SHCS3_N ? {16'h0000,SH_SDR_DO} : {16'h0000,IF_DO};
+	assign SHWAIT_N = IF_WAIT_N & ~SH_SDR_WAIT;
+
 	
 	S32X_VDP S32X_VDP
 	(
@@ -396,11 +397,13 @@ module S32X (
 		.FB0_DI(FB0_DI),
 		.FB0_DO(FB0_DO),
 		.FB0_WE(FB0_WE),
+		.FB0_RD(FB0_RD),
 		
 		.FB1_A(FB1_A),
 		.FB1_DI(FB1_DI),
 		.FB1_DO(FB1_DO),
 		.FB1_WE(FB1_WE),
+		.FB1_RD(FB1_RD),
 		
 		.R(R),
 		.G(G),
@@ -408,5 +411,6 @@ module S32X (
 		.YSO_N(YSO_N)
 	);
 
+	assign DBG_CA = {CA,1'b0};
 	
 endmodule

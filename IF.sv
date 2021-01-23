@@ -849,8 +849,8 @@ module S32X_IF (
 					VDP_LWR_N <= LWR_N;
 					VDP_UWR_N <= UWR_N;
 					MD_VDP_ACCESS <= 1;
-//				end else begin
-//					VDP_DTACK_N <= 0;
+				end else begin
+					VDP_DTACK_N <= 0;
 				end
 			end else if (MD_VDP_SEL && MD_VDP_ACCESS) begin
 				if (!VDP_ACK_N) begin
@@ -867,11 +867,11 @@ module S32X_IF (
 				VDP_DTACK_N <= 1;
 			end
 			
-			if (SH_VDP_SEL && !SHBS_N && CE_F) begin
+			if (SH_VDP_SEL && ADCR.FM && !SHBS_N && CE_F) begin
 				SH_VDP_WAIT <= 1;
 			end
 			
-			if (SH_VDP_WAIT && ADCR.FM && !SH_VDP_ACCESS) begin
+			if (SH_VDP_WAIT && !SH_VDP_ACCESS) begin
 				VDP_A <= SHA[17:1];
 				VDP_DO <= SHDI;
 				VDP_REG_CS_N <= ~SH_VDPREG_SEL;

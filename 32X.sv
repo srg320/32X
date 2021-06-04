@@ -1,4 +1,6 @@
-module S32X (
+module S32X 
+#(parameter bit USE_ROM_WAIT=0, bit USE_SDR_WAIT=0)
+(
 	input             CLK,
 	input             RST_N,
 	
@@ -63,6 +65,7 @@ module S32X (
 	output     [15:0] PWM_L,
 	output     [15:0] PWM_R,
 	
+	output     [23:0] DBG_VA,
 	output     [23:0] DBG_CA
 );
 	import S32X_PKG::*;
@@ -249,7 +252,7 @@ module S32X (
 	bit         VDP_PAL_CS_N;
 	bit         VDP_VINT;
 	bit         VDP_HINT;
-	S32X_IF s32x_if
+	S32X_IF #(USE_ROM_WAIT) s32x_if
 	(
 		.CLK(CLK),
 		.RST_N(RST_N),
@@ -332,22 +335,20 @@ module S32X (
 	bit [15:0] SH_SDR_DO;
 	bit        SH_SDR_WAIT;
 	always @(posedge CLK or negedge RST_N) begin
-		bit        SDR_WAIT_SYNC;
 		bit        SH_SDR_ACCESS;
 		
 		if (!RST_N) begin
 			SH_SDR_WAIT <= 0;
 			SH_SDR_ACCESS <= 0;		end
 		else begin
-			SDR_WAIT_SYNC <= SDR_WAIT;
 			if (~SHCS3_N && !SH_SDR_ACCESS && CE_F) begin
 				if (!SHBS_N) begin
 					SH_SDR_WAIT <= 1;
 				end
-				if (((SHRD_WR_N && !SHRD_N) || (!SHRD_WR_N && !(&SHDQM_N))) && SDR_WAIT) begin
+				if (((SHRD_WR_N && !SHRD_N) || (!SHRD_WR_N && !(&SHDQM_N))) && (SDR_WAIT || !USE_SDR_WAIT)) begin
 					SH_SDR_ACCESS <= 1;
 				end
-			end else if (SH_SDR_ACCESS && !SDR_WAIT) begin
+			end else if (SH_SDR_ACCESS && (!SDR_WAIT || !USE_SDR_WAIT)) begin
 				SH_SDR_DO <= SDR_DI;
 				SH_SDR_ACCESS <= 0;
 				SH_SDR_WAIT <= 0;
@@ -411,6 +412,7 @@ module S32X (
 		.YSO_N(YSO_N)
 	);
 
+	assign DBG_VA = {VA,1'b0};
 	assign DBG_CA = {CA,1'b0};
 	
 endmodule

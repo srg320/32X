@@ -136,7 +136,7 @@ package S32X_PKG;
 		bit [ 3: 0] UNSIGNED2;
 		bit [ 1: 0] M;				//R/W
 	} BMMR_t;
-	parameter bit [15:0] BMMR_MASK = 16'h00C3;
+	parameter bit [15:0] BMMR_MASK = 16'h80C3;
 	parameter bit [15:0] BMMR_INIT = 16'h0000;
 	
 	typedef struct packed		//R/W,A15182,20004102

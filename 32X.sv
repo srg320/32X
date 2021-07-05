@@ -373,7 +373,7 @@ module S32X
 
 		.MRES_N(MRES_N),
 		
-		.EDCLK_CE(EDCLK),
+		.EDCLK(EDCLK),
 		.VSYNC_N(VSYNC_N),
 		.HSYNC_N(HSYNC_N),
 		.YS_N(YS_N),

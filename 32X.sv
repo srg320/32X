@@ -65,7 +65,6 @@ module S32X
 	output     [15:0] PWM_L,
 	output     [15:0] PWM_R,
 	
-	output     [23:0] DBG_VA,
 	output     [23:0] DBG_CA
 );
 	import S32X_PKG::*;
@@ -411,8 +410,7 @@ module S32X
 		.B(B),
 		.YSO_N(YSO_N)
 	);
-
-	assign DBG_VA = {VA,1'b0};
+	
 	assign DBG_CA = {CA,1'b0};
 	
 endmodule

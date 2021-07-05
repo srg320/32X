@@ -41,7 +41,9 @@ module S32X_VDP (
 	output      [4:0] R,
 	output      [4:0] G,
 	output      [4:0] B,
-	output            YSO_N	//0 - 32X pixel, 1 - MD pixel
+	output            YSO_N,	//0 - 32X pixel, 1 - MD pixel
+	
+	output      [7:0] DBG_DOT_TIME
 );
 	import S32X_PKG::*;
 	
@@ -239,10 +241,12 @@ module S32X_VDP (
 	end
 	
 	bit        DOT_CLK;
+	bit        EDCLK_OLD;
 	always @(posedge CLK or negedge RST_N) begin
 		bit        HSYNC_N_OLD;
 		bit        VSYNC_N_OLD;
 		bit        VSYNC_OCCUR;
+		bit        HSYNC_SKIP;
 		
 		if (!RST_N) begin
 			DOT_CLK <= 0;
@@ -250,13 +254,24 @@ module S32X_VDP (
 			V_CNT <= '0;
 			HSYNC_N_OLD <= 1;
 			VSYNC_N_OLD <= 1;
+			HSYNC_SKIP <= 0;
 		end
 		else begin
-			if (EDCLK_CE) begin
+			DBG_DOT_TIME <= DBG_DOT_TIME + 1;
+			
+			EDCLK_OLD <= EDCLK_CE;
+			if (!EDCLK_CE && EDCLK_OLD) begin
 				DOT_CLK <= ~DOT_CLK;
 				HSYNC_N_OLD <= HSYNC_N;
-				if (!HSYNC_N && HSYNC_N_OLD && !DOT_CLK) begin
-					H_CNT <= 9'h1CE;
+//				if (HSYNC_N && !HSYNC_N_OLD && H_CNT < 9'h1CC) begin
+//					HSYNC_SKIP <= 1;
+//				end
+				if (!HSYNC_N && HSYNC_N_OLD && H_CNT >= 9'h160) begin
+//					if (!HSYNC_SKIP)
+						H_CNT <= 9'h1CD;
+						DOT_CLK <= 0;
+//					end
+//					HSYNC_SKIP <= 0;
 				end else if (H_CNT == 9'h16C && DOT_CLK) begin
 					H_CNT <= 9'h1C9;
 				end else if (DOT_CLK) begin
@@ -264,7 +279,10 @@ module S32X_VDP (
 				end
 				
 				VSYNC_N_OLD <= VSYNC_N;
-				if (!VSYNC_N && VSYNC_N_OLD) VSYNC_OCCUR <= 1;
+				if (!VSYNC_N && VSYNC_N_OLD) begin
+					VSYNC_OCCUR <= 1;
+					HSYNC_SKIP <= 0;
+				end
 				
 				if (H_CNT == 9'h149 && DOT_CLK) begin
 					if (VSYNC_OCCUR) begin
@@ -276,11 +294,15 @@ module S32X_VDP (
 						V_CNT <= V_CNT + 9'd1;
 					end
 				end
+				
+				if (DOT_CLK) begin
+					DBG_DOT_TIME <= '0;
+				end
 			end
 		end
 	end
 	
-	assign DOT_CE = DOT_CLK & EDCLK_CE;
+	assign DOT_CE = DOT_CLK & ~EDCLK_CE & EDCLK_OLD;
 
 	
 	always @(posedge CLK or negedge RST_N) begin

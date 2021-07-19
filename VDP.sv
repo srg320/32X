@@ -41,6 +41,8 @@ module S32X_VDP (
 	output      [4:0] R,
 	output      [4:0] G,
 	output      [4:0] B,
+	output            HS_N,
+	output            VS_N,
 	output            YSO_N,	//0 - 32X pixel, 1 - MD pixel
 	
 	output      [7:0] DBG_DOT_TIME
@@ -267,7 +269,7 @@ module S32X_VDP (
 			VSYNC_N_OLD <= 1;
 		end
 		else begin
-			DBG_DOT_TIME <= DBG_DOT_TIME + 1;
+			DBG_DOT_TIME <= DBG_DOT_TIME + 8'd1;
 			
 			EDCLK_OLD <= EDCLK_SYNC;
 			if (!EDCLK_SYNC && EDCLK_OLD) begin
@@ -285,7 +287,6 @@ module S32X_VDP (
 				VSYNC_N_OLD <= VSYNC_N_SYNC;
 				if (!VSYNC_N_SYNC && VSYNC_N_OLD) begin
 					VSYNC_OCCUR <= 1;
-					HSYNC_SKIP <= 0;
 				end
 				
 				if (H_CNT == 9'h149 && DOT_CLK) begin
@@ -473,9 +474,11 @@ module S32X_VDP (
 		end
 	end
 	
-	assign R = PIX_COLOR[4:0];
-	assign G = PIX_COLOR[9:5];
-	assign B = PIX_COLOR[14:10];
+	assign R = PIX_COLOR[ 4: 0] & {5{~HBLK&~VBLK}};
+	assign G = PIX_COLOR[ 9: 5] & {5{~HBLK&~VBLK}};
+	assign B = PIX_COLOR[14:10] & {5{~HBLK&~VBLK}};
+	assign HS_N = HSYNC_N_SYNC & VSYNC_N_SYNC;
+	assign VS_N = VSYNC_N_SYNC;
 	assign YSO_N = ~(PRI ^ PIX_COLOR[15]) & YS_N_SYNC;
 	
 	always @(posedge CLK) FB_DISP_RD <= DOT_CE;

@@ -60,6 +60,8 @@ module S32X
 	output      [4:0] R,
 	output      [4:0] G,
 	output      [4:0] B,
+	output            HS_N,
+	output            VS_N,
 	output            YSO_N,
 	
 	output     [15:0] PWM_L,
@@ -408,6 +410,8 @@ module S32X
 		.R(R),
 		.G(G),
 		.B(B),
+		.HS_N(HS_N),
+		.VS_N(VS_N),
 		.YSO_N(YSO_N)
 	);
 	

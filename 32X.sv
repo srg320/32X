@@ -1,5 +1,5 @@
 module S32X 
-#(parameter bit USE_ROM_WAIT=0, bit USE_SDR_WAIT=0)
+#(parameter bit USE_ROM_WAIT=0, bit USE_SDR_WAIT=0, bit USE_ASYNC_FB=1)
 (
 	input             CLK,
 	input             RST_N,
@@ -366,7 +366,7 @@ module S32X
 	assign SHWAIT_N = IF_WAIT_N & ~SH_SDR_WAIT;
 
 	
-	S32X_VDP S32X_VDP
+	S32X_VDP #(USE_ASYNC_FB) S32X_VDP
 	(
 		.CLK(CLK),
 		.RST_N(RST_N),

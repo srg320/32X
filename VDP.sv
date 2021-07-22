@@ -1,4 +1,6 @@
-module S32X_VDP (
+module S32X_VDP 
+#(parameter bit USE_ASYNC_FB=1)
+(
 	input             CLK,
 	input             RST_N,
 	input             CE_R,
@@ -69,7 +71,7 @@ module S32X_VDP (
 	bit  [8:0] V_CNT;
 	bit        VBLK;
 	bit        HBLK;
-	bit        HDISP[2];
+	bit        HDISP[3];
 	bit        RFRH;
 
 	bit [34:0] FIFO_D;
@@ -314,7 +316,7 @@ module S32X_VDP (
 		if (!RST_N) begin
 			HBLK <= 0;
 			VBLK <= 0;
-			HDISP <= '{0,0};
+			HDISP <= '{0,0,0};
 		end
 		else if (DOT_CE) begin
 			if (H_CNT == 9'h018-1) begin
@@ -325,6 +327,7 @@ module S32X_VDP (
 				HDISP[0] <= 0;
 			end
 			HDISP[1] <= HDISP[0];
+			HDISP[2] <= HDISP[1];
 			
 			if (H_CNT == 9'h1CE-1) begin
 				if ((V_CNT == 9'd224 && (!M240 || !PAL)) || (V_CNT == 9'd240 && M240 && PAL)) begin
@@ -474,19 +477,19 @@ module S32X_VDP (
 		end
 	end
 	
-	assign R = PIX_COLOR[ 4: 0] & {5{~HBLK&~VBLK}};
-	assign G = PIX_COLOR[ 9: 5] & {5{~HBLK&~VBLK}};
-	assign B = PIX_COLOR[14:10] & {5{~HBLK&~VBLK}};
+	assign R = PIX_COLOR[ 4: 0] & {5{HDISP[1]&~VBLK}};
+	assign G = PIX_COLOR[ 9: 5] & {5{HDISP[1]&~VBLK}};
+	assign B = PIX_COLOR[14:10] & {5{HDISP[1]&~VBLK}};
 	assign HS_N = HSYNC_N_SYNC & VSYNC_N_SYNC;
 	assign VS_N = VSYNC_N_SYNC;
 	assign YSO_N = ~(PRI ^ PIX_COLOR[15]) & YS_N_SYNC;
 	
-	always @(posedge CLK) FB_DISP_RD <= DOT_CE;
+	always @(posedge CLK) FB_DISP_RD <= DOT_CE | USE_ASYNC_FB;
 	
 	assign FB_DRAW_A  = FILL_EXEC ? AFAR : FB_WR ? FIFO_FB_A[16:1] : A[16:1];
 	assign FB_DRAW_D  = FILL_EXEC ? AFDR : FB_WR ? FIFO_FB_D       : DI;
-	assign FB_DRAW_WE = FILL_EXEC ? {2{FILL_EXEC & ~|FILL_WAIT}} : {FB_WR & FIFO_FB_WE[1] & ((|FIFO_FB_D[15:8] & FIFO_FB_A[17]) | ((|FIFO_FB_D[15:8] | FIFO_FB_WE[0]) & ~FIFO_FB_A[17])), 
-	                                                                FB_WR & FIFO_FB_WE[0] & ((|FIFO_FB_D[ 7:0] & FIFO_FB_A[17]) | ((|FIFO_FB_D[ 7:0] | FIFO_FB_WE[1]) & ~FIFO_FB_A[17]))};
+	assign FB_DRAW_WE = FILL_EXEC ? {2{FILL_EXEC & (~|FILL_WAIT | USE_ASYNC_FB)}} : {FB_WR & FIFO_FB_WE[1] & ((|FIFO_FB_D[15:8] & FIFO_FB_A[17]) | ((|FIFO_FB_D[15:8] | FIFO_FB_WE[0]) & ~FIFO_FB_A[17])), 
+	                                                                                 FB_WR & FIFO_FB_WE[0] & ((|FIFO_FB_D[ 7:0] & FIFO_FB_A[17]) | ((|FIFO_FB_D[ 7:0] | FIFO_FB_WE[1]) & ~FIFO_FB_A[17]))};
 	assign FB_DRAW_RD = FILL_EXEC ? 1'b0 : FB_RD;
 	
 	assign FB_DRAW_Q = FS ? FB0_DI : FB1_DI;

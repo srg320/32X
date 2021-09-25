@@ -278,8 +278,8 @@ module S32X_VDP
 				DOT_CLK <= ~DOT_CLK;
 				HSYNC_N_OLD <= HSYNC_N_SYNC;
 				if (!HSYNC_N_SYNC && HSYNC_N_OLD && H_CNT >= 9'h160) begin
-					H_CNT <= 9'h1CD;
-					DOT_CLK <= 0;
+					H_CNT <= 9'h1CE;
+					DOT_CLK <= 1;
 				end else if (H_CNT == 9'h16C && DOT_CLK) begin
 					H_CNT <= 9'h1C9;
 				end else if (DOT_CLK) begin
@@ -319,10 +319,10 @@ module S32X_VDP
 			HDISP <= '{0,0,0};
 		end
 		else if (DOT_CE) begin
-			if (H_CNT == 9'h018-1) begin
+			if (H_CNT == 9'h017-1) begin
 				HBLK <= 0;
 				HDISP[0] <= ~VBLK;
-			end else if (H_CNT == 9'h158-1) begin
+			end else if (H_CNT == 9'h157-1) begin
 				HBLK <= 1;
 				HDISP[0] <= 0;
 			end
@@ -357,7 +357,7 @@ module S32X_VDP
 		end
 	end
 	
-	wire REG_LATCH_HTIME = H_CNT >= 9'h158;
+	wire REG_LATCH_HTIME = H_CNT >= 9'h157;
 	always @(posedge CLK or negedge RST_N) begin		
 		if (!RST_N) begin
 			MODE <= '0;
@@ -378,9 +378,9 @@ module S32X_VDP
 				
 				if (VBLK || MODE == 2'b0) FS <= FBCR.FS;
 				
-				if (H_CNT == 9'h158+3-1 || VBLK || !MODE[0]) begin
+				if (H_CNT == 9'h157+3-1 || VBLK || !MODE[0]) begin
 					PEN <= 1;
-				end else if (H_CNT == 9'h018-1) begin
+				end else if (H_CNT == 9'h017-1) begin
 					PEN <= 0;
 				end
 			end
@@ -401,7 +401,7 @@ module S32X_VDP
 		end
 		else begin
 			if (DOT_CE) begin
-				if (H_CNT == 9'h018-1) begin
+				if (H_CNT == 9'h017-1) begin
 					LINE_LEAD <= {FB_DISP_Q, SFT | &MODE};
 					PIX_DATA <= '0;
 				end
@@ -431,7 +431,7 @@ module S32X_VDP
 	end
 	
 	always_comb begin
-		if (H_CNT == 9'h018-1) 
+		if (H_CNT == 9'h017-1) 
 			FB_DISP_A = {8'h00,V_CNT[7:0]};
 		else
 			FB_DISP_A = LINE_LEAD[16:1];
@@ -477,12 +477,12 @@ module S32X_VDP
 		end
 	end
 	
-	assign R = PIX_COLOR[ 4: 0] & {5{HDISP[1]&~VBLK}};
-	assign G = PIX_COLOR[ 9: 5] & {5{HDISP[1]&~VBLK}};
-	assign B = PIX_COLOR[14:10] & {5{HDISP[1]&~VBLK}};
+	assign R = PIX_COLOR[ 4: 0] & {5{HDISP[2]&~VBLK}};
+	assign G = PIX_COLOR[ 9: 5] & {5{HDISP[2]&~VBLK}};
+	assign B = PIX_COLOR[14:10] & {5{HDISP[2]&~VBLK}};
 	assign HS_N = HSYNC_N_SYNC & VSYNC_N_SYNC;
 	assign VS_N = VSYNC_N_SYNC;
-	assign YSO_N = ~(PRI ^ PIX_COLOR[15]) & YS_N_SYNC;
+	assign YSO_N = ~((PRI ^ PIX_COLOR[15]) & |MODE) & YS_N_SYNC;
 	
 	always @(posedge CLK) FB_DISP_RD <= DOT_CE | USE_ASYNC_FB;
 	

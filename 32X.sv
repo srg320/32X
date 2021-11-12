@@ -1,5 +1,5 @@
 module S32X 
-#(parameter bit USE_ROM_WAIT=0, bit USE_SDR_WAIT=0, bit USE_ASYNC_FB=1)
+#(parameter bit USE_ROM_WAIT=0, bit USE_ASYNC_FB=1)
 (
 	input             CLK,
 	input             RST_N,
@@ -135,6 +135,7 @@ module S32X
 		.RST_N(RST_N),
 		.CE_R(CE_R),
 		.CE_F(CE_F),
+		.EN(1),
 		
 		.RES_N(SHRES_N),
 		.NMI_N(1'b1),
@@ -188,6 +189,7 @@ module S32X
 		.RST_N(RST_N),
 		.CE_R(CE_R),
 		.CE_F(CE_F),
+		.EN(1),
 		
 		.RES_N(SHRES_N),
 		.NMI_N(1'b1),
@@ -333,37 +335,14 @@ module S32X
 	
 	assign CA = IF_SEL ? {2'b00,SHA[21:1]} : {VA[23:22],IF_OVA,VA[18:1]};
 	
-	bit [15:0] SH_SDR_DO;
-	bit        SH_SDR_WAIT;
-	always @(posedge CLK or negedge RST_N) begin
-		bit        SH_SDR_ACCESS;
-		
-		if (!RST_N) begin
-			SH_SDR_WAIT <= 0;
-			SH_SDR_ACCESS <= 0;		end
-		else begin
-			if (~SHCS3_N && !SH_SDR_ACCESS && CE_F) begin
-				if (!SHBS_N) begin
-					SH_SDR_WAIT <= 1;
-				end
-				if (((SHRD_WR_N && !SHRD_N) || (!SHRD_WR_N && !(&SHDQM_N))) && (SDR_WAIT || !USE_SDR_WAIT)) begin
-					SH_SDR_ACCESS <= 1;
-				end
-			end else if (SH_SDR_ACCESS && (!SDR_WAIT || !USE_SDR_WAIT)) begin
-				SH_SDR_DO <= SDR_DI;
-				SH_SDR_ACCESS <= 0;
-				SH_SDR_WAIT <= 0;
-			end
-		end
-	end
 	assign SDR_A = SHA[17:1];
 	assign SDR_DO = SHDO[15:0];
 	assign SDR_CS = ~SHCS3_N;
 	assign SDR_WE = ~SHDQM_N[1:0];
 	assign SDR_RD = ~SHRD_N;
 	
-	assign SHDI = !SHCS3_N ? {16'h0000,SH_SDR_DO} : {16'h0000,IF_DO};
-	assign SHWAIT_N = IF_WAIT_N & ~SH_SDR_WAIT;
+	assign SHDI = !SHCS3_N ? {16'h0000,SDR_DI} : {16'h0000,IF_DO};
+	assign SHWAIT_N = IF_WAIT_N & ~SDR_WAIT;
 
 	
 	S32X_VDP #(USE_ASYNC_FB) S32X_VDP

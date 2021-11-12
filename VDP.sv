@@ -80,6 +80,13 @@ module S32X_VDP
 	bit        FIFO_RD;
 	bit        FIFO_EMPTY;
 	bit        FIFO_FULL;
+	bit [17:1] FIFO_FB_A;
+	bit [15:0] FIFO_FB_D;
+	bit  [1:0] FIFO_FB_WE;
+	bit        FIFO_FB_WRITE;
+	
+	bit        FB_WR;
+	bit        FB_RD;
 
 	bit [15:0] FB_DRAW_A;
 	bit [15:0] FB_DRAW_D;
@@ -165,7 +172,7 @@ module S32X_VDP
 					ACK_N <= 0;
 				end
 			end else if (!DRAM_CS_N && (!LWR_N || !UWR_N || !RD_N) && ACK_N && !FEN) begin
-				if (!RD_N && FIFO_EMPTY) begin
+				if (!RD_N && !FIFO_FB_WRITE && FIFO_EMPTY) begin
 					FB_RD <= 1;
 					ACCESS_WAIT <= ACCESS_WAIT - 3'd1;
 					if (!ACCESS_WAIT) begin
@@ -180,7 +187,7 @@ module S32X_VDP
 				end
 			end else if (LWR_N && UWR_N && RD_N && !ACK_N) begin
 				ACK_N <= 1;
-				ACCESS_WAIT <= 3'd5;
+				ACCESS_WAIT <= 3'd6;
 			end
 			
 			if (FILL_PEND && CE_R) begin
@@ -209,13 +216,7 @@ module S32X_VDP
 		.FULL(FIFO_FULL)
 	);
 	
-	bit [17:1] FIFO_FB_A;
-	bit [15:0] FIFO_FB_D;
-	bit  [1:0] FIFO_FB_WE;
-	bit        FB_WR;
-	bit        FB_RD;
 	always @(posedge CLK or negedge RST_N) begin
-		bit        FIFO_FB_PEND;
 		bit  [2:0] FIFO_FB_WAIT;
 		
 		if (!RST_N) begin
@@ -224,20 +225,20 @@ module S32X_VDP
 			FIFO_FB_WE <= '0;
 			FB_WR <= 0;
 			FIFO_RD <= 0;
-			FIFO_FB_PEND <= 0;
+			FIFO_FB_WRITE <= 0;
 		end
 		else begin
 			FIFO_RD <= 0;
-			if (!FIFO_EMPTY && !FIFO_FB_PEND) begin
+			if (!FIFO_EMPTY && !FIFO_FB_WRITE) begin
 				{FIFO_FB_A,FIFO_FB_WE,FIFO_FB_D} <= FIFO_Q;
 				FB_WR <= 1;
 				FIFO_RD <= 1;
 				FIFO_FB_WAIT <= 3'd5;
-				FIFO_FB_PEND <= 1;
-			end else if (FIFO_FB_PEND) begin
+				FIFO_FB_WRITE <= 1;
+			end else if (FIFO_FB_WRITE) begin
 				FIFO_FB_WAIT <= FIFO_FB_WAIT - 3'd1;
 				if (!FIFO_FB_WAIT) begin
-					FIFO_FB_PEND <= 0;
+					FIFO_FB_WRITE <= 0;
 					FB_WR <= 0;
 				end
 			end

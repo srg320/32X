@@ -820,7 +820,7 @@ module S32X_IF
 				MD_ROM_WAIT <= 1;
 			end
 			
-			ROM_WAIT_CNT <= ROM_WAIT_CNT + 7'd1;
+			if (SH_ROM_WAIT) ROM_WAIT_CNT <= ROM_WAIT_CNT + 8'd1;
 			case (ROM_ST)
 				RS_IDLE: begin
 					if (SH_ROM_WAIT && !DCR.RV) begin
@@ -830,11 +830,11 @@ module S32X_IF
 						S32X_CAS0 <= ~SHRD_N;
 						SH_ROM_GRANT <= 1;
 						ROM_ST <= RS_SH_RW;
-					end else if (MD_ROM_WAIT & ADCR.ADEN & ~DCR.RV) begin
+					end else if (MD_ROM_WAIT && ADCR.ADEN && !DCR.RV) begin
 						S32X_CE0 <= 1;
 						ROM_ST <= RS_MD_RW;
 					end
-					ROM_WAIT_CNT <= '0;
+//					ROM_WAIT_CNT <= '0;
 				end
 				
 				RS_SH_RW: begin
@@ -857,6 +857,7 @@ module S32X_IF
 						S32X_UWR <= 0;
 						S32X_CAS0 <= 0;
 						ROM_ST <= RS_SH_END;
+						ROM_WAIT_CNT <= '0;
 					end
 				end
 				
@@ -965,9 +966,9 @@ module S32X_IF
 			
 			if (SH_VDP_SEL && ADCR.FM && !SHBS_N && CE_F) begin
 				SH_VDP_WAIT <= 1;
-			end
-			
-			if (SH_VDP_WAIT && !SH_VDP_ACCESS) begin
+//			end
+//			
+//			if (SH_VDP_WAIT && !SH_VDP_ACCESS) begin
 				VDP_A <= SHA[17:1];
 				VDP_DO <= SHDI;
 				VDP_REG_CS_N <= ~SH_VDPREG_SEL;
